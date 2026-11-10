@@ -112,7 +112,7 @@ export const STUDIO_TOOLS = [
   {
     name: "list_formats",
     description:
-      "List the video formats CutRoom produces (explainer with a cartoon teacher, UI motion reel, 2D what-if cartoon, Kurzgesagt-style explainer...). Each has an id, aspect, length and what it is good for.",
+      "List the video formats CutRoom produces (explainer with a cartoon teacher, UI motion reel, 2D what-if cartoon, animated visual explainer without an avatar...). Each has an id, aspect, length and what it is good for.",
     inputSchema: objectSchema(),
   },
   {
@@ -224,6 +224,18 @@ export const STUDIO_TOOLS = [
       { film: string("Film id."), url: string("http(s) link of the page."), name: string("File name inside assets/ (default pagina).") },
       ["film", "url"],
     ),
+  },
+  {
+    name: "list_effects",
+    description:
+      "Search the effects catalogue that ships with the app (236 HyperFrames components, offline): kinetic captions, text reveals, transitions and wipes, light/grain/VFX overlays, cursors and UI motion, notifications, counters, charts, CTAs, logo stings. Returns name, title, description and tags. Then film_add_effect puts one in a film.",
+    inputSchema: objectSchema({ query: string("Words to search, e.g. 'caption karaoke', 'transition light', 'cursor click', 'notification'."), limit: { type: "number", description: "Max results (default 40)." } }, []),
+  },
+  {
+    name: "film_add_effect",
+    description:
+      "Copy one effect from list_effects into the film (compositions/components/) and get its mount snippet and variables. Mount it in index.html as a .clip div with id, data-start, data-duration, data-track-index and data-variable-values; size the div where the effect should appear. Use cues from the narration word times.",
+    inputSchema: objectSchema({ film: string("Film id."), name: string("Effect name from list_effects.") }, ["film", "name"]),
   },
   {
     name: "film_check",

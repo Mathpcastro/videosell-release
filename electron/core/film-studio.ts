@@ -1,4 +1,5 @@
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises";
 import { extname, isAbsolute, join } from "node:path";
 import { z } from "zod";
 import { ffmpegPath } from "./media";
@@ -150,6 +151,33 @@ export class FilmStudio {
     return this.host.films.addAsset(a.film, path, a.name ?? path.split(/[\\/]/).pop()!);
   }
 
+  async proofAsset(id: string, proofId: string, path: string) {
+    film.parse(id);
+    if (extname(path).toLowerCase() !== ".mp4") {
+      const { file } = await this.asset({ film: id, path, name: "proof-" + proofId });
+      return [file];
+    }
+    return this.host.job("inspection", "Preparando a gravação da prova…", async (signal) => {
+      const scratch = await mkdtemp(join(tmpdir(), "videosell-proof-"));
+      try {
+        await runProcess(ffmpegPath, [
+          "-v", "error", "-i", path, "-t", "8", "-an",
+          "-vf", "fps=8,scale=720:-2", "-q:v", "4", join(scratch, "frame-%03d.jpg"),
+        ], { signal });
+        const frames = (await readdir(scratch)).filter((name) => /^frame-\d{3}\.jpg$/.test(name)).sort();
+        if (!frames.length) throw new Error("Não consegui extrair quadros desta gravação.");
+        const assets: string[] = [];
+        for (const name of frames) {
+          const { file } = await this.host.films.addAsset(id, join(scratch, name), "proof-" + proofId + "-" + name);
+          assets.push(file);
+        }
+        return assets;
+      } finally {
+        await rm(scratch, { recursive: true, force: true });
+      }
+    });
+  }
+
   write(args: Record<string, unknown>) {
     const a = z.object({ film, path: z.string().min(1).max(200), content: z.string() }).strict().parse(args);
     return this.host.films.writeFile(a.film, a.path, a.content);
@@ -159,6 +187,17 @@ export class FilmStudio {
     const a = z.object({ film, path: z.string().max(200).optional() }).strict().parse(args);
     if (!a.path) return { files: await this.host.films.files(a.film), path: this.host.films.dir(a.film) };
     return this.host.films.readFile(a.film, a.path);
+  }
+
+  /** Effects catalogue (HyperFrames registry components, offline). */
+  async listEffects(args: Record<string, unknown>) {
+    const a = z.object({ query: z.string().max(200).optional(), limit: z.number().int().min(1).max(120).optional() }).strict().parse(args);
+    return this.host.films.effects(a.query, a.limit);
+  }
+
+  async addEffect(args: Record<string, unknown>) {
+    const a = z.object({ film, name: z.string().max(80) }).strict().parse(args);
+    return this.host.films.addEffect(a.film, a.name);
   }
 
   async capture(args: Record<string, unknown>) {

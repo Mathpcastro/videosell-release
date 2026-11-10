@@ -1,3 +1,5 @@
+import { BrandProofStore } from "./core/brand-proofs";
+import { readProductPage } from "./core/product-page";
 import {
   app,
   BrowserWindow,
@@ -819,8 +821,14 @@ async function executeTool(
     read_film_file: (a) => filmStudio.read(a),
     film_check: (a) => filmStudio.check(a),
     film_capture_page: (a) => filmStudio.capture(a),
+    list_effects: (a) => filmStudio.listEffects(a),
+    film_add_effect: (a) => filmStudio.addEffect(a),
     film_review: (a) => filmStudio.review(a),
-    instagram_accounts: () => publisher.settings(),
+    // With a key but no accounts yet (key saved outside the Publish screen), look them up once.
+    instagram_accounts: async () => {
+      const s = await publisher.settings();
+      return s.hasKey && !s.accounts.length ? publisher.refresh() : s;
+    },
     schedule_reel: (a) => publisher.schedule(a),
     schedule_reels_daily: (a) => publisher.scheduleSeries(a),
     cancel_scheduled_reel: (a) =>
@@ -1300,6 +1308,8 @@ async function request(method: string, params?: unknown): Promise<unknown> {
       return studio.getFormatGuide(params as Record<string, unknown>);
     case "render_film":
       return filmStudio.render(params as Record<string, unknown>);
+    case "getInstagramAnalytics":
+      return publisher.analytics(params);
     case "getPublishSettings":
       return publisher.settings();
     case "setComposioKey": {
@@ -1316,6 +1326,28 @@ async function request(method: string, params?: unknown): Promise<unknown> {
       );
     case "listVideos":
       return { videos: await publisher.videos() };
+    case "openInstagramPost": {
+      const { permalink } = z.object({ permalink: z.string().url().max(500) }).parse(params);
+      const url = new URL(permalink);
+      if (url.protocol !== "https:" || !["instagram.com", "www.instagram.com"].includes(url.hostname)
+        || !/^\/(reel|p)\/[A-Za-z0-9_-]+\/?$/.test(url.pathname) || url.username || url.password)
+        throw new Error("Link da publicação inválido.");
+      await shell.openExternal(url.href);
+      return { opened: true };
+    }
+    case "previewExportedVideo": {
+      const { path } = z.object({ path: z.string().min(1).max(2000) }).parse(params);
+      if (!(await publisher.videos()).some((video) => video.path === path))
+        throw new Error("Escolha um MP4 da biblioteca do Videosell.");
+      const resolved = await realpath(path);
+      const folder = await realpath(dirname(path));
+      if (dirname(resolved) !== folder || extname(resolved).toLowerCase() !== ".mp4")
+        throw new Error("O arquivo está fora da biblioteca de vídeos.");
+      allowedFiles.add(resolved);
+      const url = new URL("cutroom://media");
+      url.searchParams.set("path", resolved);
+      return { url: url.href };
+    }
     case "publishReel":
       return publisher.publish(params);
     case "scheduleReel":
@@ -1403,6 +1435,41 @@ async function request(method: string, params?: unknown): Promise<unknown> {
       return dispatchProfileTool("profile_get", params as Record<string, unknown>);
     case "profileCreate":
       return dispatchProfileTool("profile_create", params as Record<string, unknown>);
+    case "attachBrandProof": {
+      const { profileId, proofId, film } = z.object({
+        profileId: z.string(), proofId: z.string().uuid(), film: z.string().max(120),
+      }).strict().parse(params);
+      await profileService.get(profileId);
+      const asset = await new BrandProofStore(userDir).asset(profileId, proofId);
+      return { frames: await filmStudio.proofAsset(film, proofId, asset.path) };
+    }
+    case "listBrandProofs": {
+      const { profileId } = z.object({ profileId: z.string() }).strict().parse(params);
+      await profileService.get(profileId);
+      return new BrandProofStore(userDir).list(profileId);
+    }
+    case "addBrandProof": {
+      const { profileId, attach, ...proof } = z.object({
+        profileId: z.string(), attach: z.boolean(), title: z.string().trim().min(1).max(120),
+        description: z.string().trim().min(1).max(500),
+        kind: z.enum(["screenshot", "recording", "testimonial", "result"]),
+        confirmed: z.literal(true),
+      }).strict().parse(params);
+      await profileService.get(profileId);
+      let source: string | undefined;
+      if (attach) {
+        const selection = await dialog.showOpenDialog(window!, {
+          properties: ["openFile"],
+          filters: [{ name: "Imagem ou vídeo", extensions: ["png", "jpg", "jpeg", "webp", "mp4"] }],
+        });
+        if (selection.canceled) return null;
+        source = selection.filePaths[0];
+      }
+      const { confirmed: _confirmed, ...metadata } = proof;
+      return new BrandProofStore(userDir).add(profileId, metadata, source);
+    }
+    case "readProductPage":
+      return readProductPage(z.object({ url: z.string().trim().min(1).max(2000) }).strict().parse(params).url);
     case "profileUpdate":
       return dispatchProfileTool("profile_update", params as Record<string, unknown>);
     case "profileDuplicate":
@@ -1421,6 +1488,10 @@ async function request(method: string, params?: unknown): Promise<unknown> {
       return { brand: await brandStore.set(params) };
     case "carrossellProfiles":
       return carrossellProfiles();
+    case "previewCarrossellBrand": {
+      const { profileId } = z.object({ profileId: z.string().min(1).max(100) }).strict().parse(params);
+      return { brand: await importCarrossellBrand(profileId) };
+    }
     case "importCarrossellBrand": {
       const { profileId } = z
         .object({ profileId: z.string().max(100).optional() })

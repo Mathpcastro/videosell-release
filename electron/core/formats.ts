@@ -138,29 +138,71 @@ A página do usuário vira um plano deitado num chão claro; uma câmera contín
     ],
   },
   {
-    id: "stickman",
-    name: "Suspense de stickman (cenário 3D)",
+    id: "historia",
+    name: "Historinha em episódios",
     aspect: "9:16",
-    length: "30–45 s",
-    goodFor: "Prender pela tensão: \"Imagine que você lançou o seu SaaS hoje…\" com dia e hora correndo, regras, uma ameaça que cresce e um final com escolha que enche os comentários.",
-    needs: ["a situação do cliente em 3–4 regras e uma virada"],
-    guide: `# Suspense de stickman (cenário 3D)
-Suspense em segunda pessoa: um boneco de palito 2D (contorno escuro grosso, corpo claro, olhos de ponto, um boné na cor da marca) vive dentro de um cenário 3D low-poly com luz de verdade (three.js no kit: \`kit/three\`). A atmosfera vem da luz: dia quente pela janela, noite fria com a tela e a fresta da porta.
+    length: "25–45 s",
+    goodFor: "Contar histórias em série com personagens fixos (o seu avatar e coadjuvantes): um episódio por dia, com gancho, conflito, virada e \"continua no próximo episódio\". Cria hábito e faz as pessoas seguirem o perfil para ver a parte 2 — sem precisar vender nada no vídeo.",
+    needs: ["os personagens (nome e jeito de cada um)", "a situação do episódio e o gancho para o próximo"],
+    guide: `# Historinha em episódios
+Série com personagens fixos. O roteiro fica no bloco \`#roteiro\` do \`index.html\`; \`CRM.autoStory\` monta tudo.
 
-## Estrutura (≈ 35 s)
-1. **Gancho (0–3 s):** "Imagine que você…" + HUD com DIA e hora (monoespaçada, canto superior esquerdo). A câmera começa no personagem e abre para o quarto.
-2. **Regras (3–12 s):** 3 regras curtas, cada uma num adesivo inclinado (título condensado) e paga na tela (o notebook mostra o post, o preço riscado, o relógio).
-3. **Ameaça (12–20 s):** o tempo pula (DIA 7, 14, 30), a luz cai, um número piora (caixa em dias, curtidas em zero).
-4. **Virada (20–27 s):** o celular em primeira pessoa vibra; a mensagem faz duas regras colidirem; contagem regressiva.
-5. **Escolha (27–33 s):** duas opções ruins (verde e vermelha) + "COMENTA AQUI EMBAIXO" + CTA do perfil.
+## Roteiro
+\`\`\`
+# Episódio 2: O manual
+[cena: escritorio, noite]        ← lugares: quarto, escritorio, rua, cafe · dia ou noite
+Narrador: Episódio dois. O manual.
+Léo (animado): Bia, dez clientes novos!   ← humor: animado, sonolenta, pensativa, confiante, brava, nervoso, surpresa
+Bia: E zero manuais.
+Narrador: Continua no próximo episódio.
+\`\`\`
+- Linhas sem "Nome:" são do narrador (caixa amarela de quadrinho). A primeira linha do narrador vira o cartão de título; a última, o "Continua…" com o CTA "SEGUE PRA PARTE 2".
+- Cada personagem é um avatar: só mexe a boca na própria fala; perguntas e exclamações ganham close no rosto; o balão sai em cima de quem fala com a palavra falada destacada.
+- Elenco em \`cast: { "Léo": window.FILM_AVATAR, "Bia": CRM_SAMPLE_AVATARS.companion }\`. O 1º personagem usa o avatar do perfil.
 
-## Como montar
-- O filme inicial já traz o quarto, a câmera por cortes (\`SHOTS\`), o boneco com poses (\`poseAt\`), as telas vivas em canvas (notebook, relógio, calendário) e o acabamento (bloom, vinheta, grão, franja de cor). Troque a história; mantenha a linguagem.
-- Uma fala = um plano. Legenda de 1–3 palavras com a palavra-chave na cor da marca.
-- Escreva números por extenso no roteiro (para a voz) e em algarismos na tela.
-- Efeitos: vibração, coração, tique-taque, "impact" nos adesivos; música escura e sem vocal, baixa.
-- Render 3D é mais lento (≈ 25 min para 35 s): confira com \`film_stills\` antes.`,
-    checklist: [...CHECK_COMMON, "HUD de dia/hora sempre visível e atualizando", "Cada regra é paga na tela", "Final com escolha em que as duas opções parecem ruins"],
+## Narração
+- \`film_voiceover\` recebe **só as falas**, na ordem, sem nomes nem marcações (o texto de \`roteiro.txt\`).
+- Vozes diferentes por personagem: gere o diálogo fora (ElevenLabs, várias vozes) e use \`film_voiceover{film, text, audio}\` — os tempos das palavras vêm da transcrição local.
+
+## Estrutura (≈ 30 s)
+1. Título do episódio (2 s) e situação em 1 fala.
+2. Conflito em 2–4 falas curtas, alternando personagens.
+3. Virada (o narrador marca a passagem de tempo, troque a cena).
+4. Gancho final + "Continua no próximo episódio".
+Falas de até 12 palavras. Uma série = mesmos personagens, mesma abertura, episódios numerados.`,
+    checklist: [...CHECK_COMMON, "Cada fala tem no máximo 12 palavras", "O episódio termina num gancho para o próximo", "A narração tem só as falas, na mesma ordem do roteiro"],
+  },
+  {
+    id: "avatar",
+    name: "Avatar apresentador",
+    aspect: "9:16",
+    length: "25–35 s",
+    goodFor: "O seu avatar de IA apresenta o produto em um Reels acelerado: cai na tela, faz zoom no rosto, aponta, comemora, dorme enquanto o perfil trabalha e termina no link do perfil. Cada frase é uma cena nova.",
+    needs: ["a dor do público em uma frase", "3 coisas que o produto faz", "o funil até a venda"],
+    guide: `# Avatar apresentador
+O avatar do perfil (pixel art do criador de avatar) é o apresentador. Sem avatar no filme, o kit usa uma amostra. Tudo vem de \`kit/cutroom-motion.js\` (objeto \`CRM\`).
+
+## Linguagem
+- **Uma frase = uma cena.** A cada frase muda o fundo (\`CRM.background\` com cortina circular), o enquadramento do avatar (\`A.shot\`) e o texto.
+- **Câmera viva:** zoom no rosto (\`A.shot\` com scale 22–28), chicote entre cenas (\`CRM.whip\`), tremida no impacto (\`CRM.shake\`), punch nos números (\`CRM.punch\`), flash (\`CRM.flash\`).
+- **O avatar atua:** \`A.act(t, pose, expressão)\` nas palavras-chave (poses: neutral, explaining, pointing, surprised, celebrating; expressões: neutral, happy, thinking, surprised, serious, confident). \`A.talk\` faz gestos nas palavras; \`A.enter\` (drop, pop, left, right), \`A.hop\`, \`A.spin\`, \`A.hit\`, \`A.sleep\`. A boca segue a narração sozinha.
+- **Texto que bate:** \`CRM.slam\` (palavra por palavra), \`CRM.letters\` (letras caindo), \`CRM.glitch\`, \`CRM.strike\`, \`CRM.popIn\`, \`CRM.slideIn\`. Máximo de 3–5 palavras na tela.
+- **Partículas** no ápice: \`CRM.particles\` (confetti, coin, heart, spark, dust) e \`CRM.speedLines\`.
+- Barra de progresso no topo (\`CRM.progress\`) e CTA do perfil no fim.
+
+## Estrutura (≈ 30 s)
+1. Gancho com o avatar caindo na tela + a dor.
+2. Close no rosto na frase que dói.
+3. O inimigo (anúncio caro, falta de tempo) com carimbo.
+4. A prova com número subindo.
+5. Três "sem" que batem com tremida.
+6. Apresentação do avatar com giro e confete.
+7. O que ele faz em 3 cards, com a voz desenhada ao vivo (\`CRM.waveform\`).
+8. Virada (noite, dia) e funil até a venda com moedas.
+9. CTA: "Quer o seu?" + link do perfil.
+
+Efeitos: whoosh nos chicotes, impact nos carimbos, pop nos cards, moedas na venda; música animada e baixa.`,
+    checklist: [...CHECK_COMMON, "Cada frase muda a cena (fundo, enquadramento ou texto)", "O avatar muda de pose ou expressão nas palavras-chave", "Pelo menos um zoom no rosto e um ápice com partículas"],
   },
   {
     id: "pixel",
@@ -210,26 +252,26 @@ Um cenário 2D chapado (céu, chão, personagem simples) atravessa o tempo: um r
   },
   {
     id: "kurzgesagt",
-    name: "Explainer ilustrado (estilo livro científico)",
+    name: "Motion UI explicativo",
     aspect: "9:16",
     length: "40–60 s",
-    goodFor: "Explicar um conceito do nicho com ilustração vetorial chapada, cores saturadas em fundo escuro, um mascote e muita profundidade. Autoridade e compartilhamento.",
-    needs: ["o conceito em 3 partes"],
-    guide: `# Explainer ilustrado (estilo livro científico)
-Ilustração vetorial chapada (formas com gradiente suave, contorno grosso arredondado), fundo escuro azul/roxo, cores saturadas, um mascote simples reagindo. A câmera atravessa camadas.
+    goodFor: "Explicar uma ideia ou contar uma história curta sem avatar, com diagramas, objetos e interface em movimento.",
+    needs: ["uma ideia ou história curta em 3 partes"],
+    guide: `# Motion UI explicativo
+Ilustração vetorial chapada (formas com gradiente suave, contorno grosso arredondado), fundo escuro azul/roxo, cores saturadas e profundidade. Só a narração e os elementos da explicação conduzem as cenas. A câmera atravessa camadas.
 
 ## Estrutura (≈ 50 s)
 1. **Gancho (0–3 s):** zoom rápido de muito longe para o objeto do assunto (um planeta, um celular gigante, um cérebro) com a pergunta.
 2. **Parte 1 (3–18 s):** o conceito básico, com um diagrama que se monta peça por peça na palavra.
 3. **Parte 2 (18–33 s):** o mecanismo (setas animadas, partículas fluindo de A para B, contador).
-4. **Parte 3 (33–45 s):** a aplicação para o público (o mascote usando o produto).
-5. **Final (45–50 s):** frase curta + CTA, mascote acenando.
+4. **Parte 3 (33–45 s):** a aplicação para o público (o diagrama se transforma numa tela, exemplo ou resultado).
+5. **Final (45–50 s):** resolução visual da ideia + frase curta ou CTA.
 
 ## Como montar
 - Paleta: fundo \`radial-gradient(#22305e, #0b1026)\`, objetos em azul/ciano/verde/laranja saturados, contorno 8–14 px numa cor mais escura do próprio objeto.
 - Profundidade: 3 camadas (estrelas/partículas lentas, objeto principal, primeiro plano rápido). Zooms grandes (\`scale\` 0,2 → 1) com \`power3.inOut\`.
 - Partículas: 20–60 círculos com posições de semente fixa (nunca \`Math.random\` sem semente) fluindo com \`stagger\`.
-- Mascote: forma simples (blob com olhos), pisca e reage às viradas.`,
+- História opcional: situação inicial → mudança → consequência. Repita o objeto central em novos estados para conectar as cenas.`,
     checklist: [...CHECK_COMMON, "Ilustração chapada consistente (mesma paleta e contorno)", "Profundidade com camadas e zoom", "Diagramas se montam na palavra"],
   },
 ] as VideoFormat[]).map((f) => ({ ...f, guide: `${f.guide}\n${FLOW}` }));

@@ -108,6 +108,58 @@ export class Films {
     if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(id)) fail("Filme inválido.");
     return join(this.root, id);
   }
+
+  /** HyperFrames registry components shipped offline in the kit (Apache-2.0, see hf-registry/NOTICE). */
+  async effects(query?: string, limit = 40) {
+    const index = JSON.parse(await readFile(join(this.kit, "hf-registry", "index.json"), "utf8")) as {
+      items: { name: string; title: string; description: string; tags: string[] }[];
+    };
+    const words = (query ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+    const scored = index.items
+      .map((item) => {
+        const hay = `${item.name} ${item.title} ${item.description} ${item.tags.join(" ")}`.toLowerCase();
+        return { item, score: words.reduce((n, w) => n + (hay.includes(w) ? (item.name.includes(w) ? 3 : 1) : 0), 0) };
+      })
+      .filter((x) => !words.length || x.score > 0)
+      .sort((a, b) => b.score - a.score || a.item.name.localeCompare(b.item.name));
+    return { total: scored.length, effects: scored.slice(0, limit).map((x) => x.item) };
+  }
+
+  /** Copies one registry component into the film (compositions/components/) and returns how to mount it. */
+  async addEffect(id: string, name: string) {
+    if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(name)) fail("Efeito inválido. Use um nome de list_effects.");
+    await this.meta(id);
+    const src = join(this.kit, "hf-registry", "components", name);
+    if (!(await stat(src).then((s) => s.isDirectory(), () => false))) fail(`Efeito "${name}" não existe. Procure com list_effects.`);
+    const dest = join(this.dir(id), "compositions", "components");
+    await mkdir(dest, { recursive: true });
+    let readme = "";
+    for (const file of await readdir(src)) {
+      if (file === "registry-item.json") continue;
+      if (file === "README.md") {
+        readme = await readFile(join(src, file), "utf8");
+        continue;
+      }
+      await cp(join(src, file), join(dest, file));
+    }
+    // Some effects use GSAP's CustomEase next to the film's own GSAP copy.
+    const html = await readFile(join(src, `${name}.html`), "utf8").catch(() => "");
+    if (html.includes("kit/CustomEase.min.js")) await cp(join(dirname(this.gsap), "CustomEase.min.js"), join(this.dir(id), "kit", "CustomEase.min.js"));
+    const mountAt = readme.indexOf("## Mount");
+    const mount = mountAt >= 0 ? /```html\n([\s\S]*?)```/.exec(readme.slice(mountAt))?.[1] : undefined;
+    const varsAt = readme.indexOf("## Variables");
+    const varsEnd = varsAt >= 0 ? readme.indexOf("\n## ", varsAt + 5) : -1;
+    return {
+      file: `compositions/components/${name}.html`,
+      mount: (mount
+        ? mount.replace(/data-composition-src="\.\/([^"]+)"/, 'data-composition-src="compositions/components/$1"').replace("<div", `<div id="${name}-1"`)
+        : `<div id="${name}-1" class="clip" data-composition-id="${name}" data-composition-src="compositions/components/${name}.html" data-start="0" data-duration="3" data-track-index="5"></div>`
+      ).trim(),
+      variables: varsAt >= 0 ? readme.slice(varsAt, varsEnd > 0 ? varsEnd : undefined).trim() : "",
+      notes:
+        "Monte numa div .clip com id, data-start, data-duration e data-track-index; posicione e dimensione a div (o efeito preenche a caixa). Variáveis em data-variable-values (JSON); cues = segundos de cada batida, use os tempos da narração. Cores: --brand, --accent, --accent-2 no #film.",
+    };
+  }
   private inside(id: string, path: string) {
     const base = resolve(this.dir(id)),
       target = resolve(base, path);
@@ -151,6 +203,25 @@ export class Films {
     await cp(join(this.kit, "fonts"), join(dir, "fonts"), { recursive: true });
     await mkdir(join(dir, "kit"), { recursive: true });
     await cp(join(this.kit, "cutroom-kit.js"), join(dir, "kit", "cutroom-kit.js"));
+    await cp(join(this.kit, "cutroom-motion.js"), join(dir, "kit", "cutroom-motion.js"));
+    // Pixel avatar engine + a sample avatar, so avatar formats preview before the user's own avatar is attached.
+    const engine = join(this.kit, "..", "avatar-engine");
+    if (await stat(join(engine, "avatar-engine.js")).then(() => true, () => false)) {
+      await mkdir(join(dir, "kit", "avatar"), { recursive: true });
+      // Classic-script build of the engine: ready before the first frame is captured (a dynamic import is not).
+      await writeFile(join(dir, "kit", "avatar", "engine.js"), classicAvatarEngine(await readFile(join(engine, "avatar-engine.js"), "utf8")), "utf8");
+      const samples: Record<string, unknown> = {};
+      for (const name of ["strategist", "companion", "expert"]) {
+        const raw = await readFile(join(engine, "examples", `${name}.json`), "utf8").catch(() => "");
+        if (raw) samples[name] = JSON.parse(raw);
+      }
+      if (Object.keys(samples).length)
+        await writeFile(
+          join(dir, "kit", "avatar", "sample.js"),
+          `window.CRM_SAMPLE_AVATARS = ${JSON.stringify(samples)};\nwindow.CRM_SAMPLE_AVATAR = window.CRM_SAMPLE_AVATARS.strategist || Object.values(window.CRM_SAMPLE_AVATARS)[0];\n`,
+          "utf8",
+        );
+    }
     // three.js (MIT) for 3D sets and post-processing; use an import map: {"three": "./kit/three/three.module.min.js"}.
     if (await stat(join(this.kit, "three")).then(() => true, () => false)) await cp(join(this.kit, "three"), join(dir, "kit", "three"), { recursive: true });
     await writeFile(join(dir, "kit", "gsap.min.js"), await readFile(this.gsap)); // may live inside app.asar
@@ -339,6 +410,16 @@ async function stageFilm(films: Films, id: string) {
 }
 
 /** Runs the HyperFrames worker (Electron in Node mode) and returns its final JSON line. */
+/** The avatar engine (an ES module) as a classic script exposing window.AvatarEngine. */
+export function classicAvatarEngine(source: string) {
+  const body = source.replace(/^export\s+(async\s+)?function/gm, "$1function");
+  return `(function () {
+${body}
+window.AvatarEngine = { renderAvatarPixels: renderAvatarPixels, evaluatePart: evaluatePart };
+})();
+`;
+}
+
 export async function runFilmWorker(dir: string, spec: Record<string, unknown>, runner: FilmRunner, directory = dir) {
   const work = join(dir, ".renders");
   await mkdir(work, { recursive: true });
@@ -517,6 +598,16 @@ Pasta de um filme do CutRoom (projeto HyperFrames). Você escreve \`index.html\`
 - Movimentos: \`CR.pop / rise / exit / slam / stamp / spin / draw / show / hide (tl, seletor, t)\`, \`CR.count(tl, sel, de, até, t, duração)\`, \`CR.type(tl, sel, t)\`, \`CR.wipe(tl, t)\` (transição em meio-tom).
 - Fala: \`CR.captions(tl, {el, maxWords, keys})\`, \`CR.mouth(tl, ".mo", n)\`, \`CR.blink\`, \`CR.sway\`, \`CR.nod\`, \`CR.gesture\`.
 - Apresentador em pixel art: \`CR.pixelPresenter(tl, {x, y, scale, hoodie, skin, hair})\` cria o personagem, a boca pela narração, a piscada e o balanço; devolve \`{hand(t)}\` para o joinha.
+
+## Motor de movimento (\`kit/cutroom-motion.js\`, objeto \`CRM\`)
+- Avatar do perfil em cena: \`CRM.avatar({engine: window.AvatarEngine, avatar: window.FILM_AVATAR || window.CRM_SAMPLE_AVATAR})\` (scripts \`kit/avatar/engine.js\` e \`kit/avatar/sample.js\`); \`shot\`, \`act(t, pose, expressão)\`, \`talk\`, \`enter\`, \`hop\`, \`spin\`, \`hit\`, \`sleep\`; desenhe com \`A.draw(ctx, t)\` no \`draw(t)\`.
+- Texto: \`CRM.slam\` (impacto), \`CRM.rise\` (desfoque → nítido), \`CRM.karaoke\` (pílula na palavra falada), \`CRM.scramble\`, \`CRM.letters\`, \`CRM.glitch\`, \`CRM.explode\`, \`CRM.strike\`, \`CRM.shimmer\`.
+- Câmera e cortes: \`CRM.shake\`, \`CRM.punch\`, \`CRM.whip\`, \`CRM.flash\`; fundo vivo \`CRM.mesh\` / \`CRM.background\`; partículas \`CRM.particles\` / \`CRM.overlay\`; \`CRM.speedLines\`; onda da voz \`CRM.waveform\`.
+- Acabamento: \`CRM.post(tl, D, {leaks: [tempos dos cortes]})\` (luz vazando nos cortes, grão, vinheta, cor) — use em todo filme.
+- Diretor automático: \`CRM.autoReel({tl, duration, engine, avatar})\` monta o Reels inteiro a partir da narração.
+
+## Efeitos prontos (catálogo HyperFrames, offline)
+\`list_effects{query}\` procura entre 236 efeitos (legendas cinéticas, transições, luz/grão, cursores e UI motion, notificações, contadores, CTA); \`film_add_effect{film, name}\` copia para \`compositions/components/\` e devolve a montagem (\`div.clip\` com \`data-composition-src\`, variáveis e \`cues\` nos tempos da narração).
 
 ## Qualidade (o que o review cobra)
 - Gancho em momento nos 3 primeiros segundos; virada no meio; pergunta final que divide os comentários.
