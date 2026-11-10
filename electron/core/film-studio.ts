@@ -250,11 +250,11 @@ export class FilmStudio {
     const frames = (await this.stills({ film: id, times })) as { images: string[]; frameTimes: number[]; errors: string[] };
     const m = analysis.motion, s = analysis.speech;
     const flags: string[] = [];
-    if (m.firstMotion > 1) flags.push(`Primeiro movimento só em ${m.firstMotion}s: o gancho precisa mexer já no primeiro segundo.`);
-    if (m.longestStill > 1.5) flags.push(`Trecho parado de ${m.longestStill}s a partir de ${m.longestStillAt}s: entre com câmera, um elemento ou corte.`);
-    if (m.shotChangesPer10s < 2) flags.push(`Só ${m.shotChangesPer10s} trocas de plano a cada 10 s: o ritmo bom de Reels fica entre 3 e 6.`);
+    if (m.firstMotion > 1) flags.push(`Primeiro movimento em ${m.firstMotion}s.`);
+    if (m.longestStill > 1.5) flags.push(`Trecho parado de ${m.longestStill}s a partir de ${m.longestStillAt}s.`);
+    if (m.shotChangesPer10s < 2) flags.push(`${m.shotChangesPer10s} trocas de plano a cada 10 s.`);
     if (s.words && (s.wordsPerMinute < 140 || s.wordsPerMinute > 220)) flags.push(`Narração a ${s.wordsPerMinute} palavras/min: o confortável fica entre 150 e 200.`);
-    if (s.longestPause > 1.2) flags.push(`Pausa de ${s.longestPause}s na narração: preencha com imagem ou encurte.`);
+    if (s.longestPause > 1.2) flags.push(`Pausa de ${s.longestPause}s na narração.`);
     const format = FORMATS.find((f) => f.id === meta.format);
     return {
       images: frames.images,
@@ -265,7 +265,7 @@ export class FilmStudio {
       flags,
       checklist: format?.checklist ?? [],
       instructions:
-        "Avalie como alguém que NÃO fez o filme e vai decidir em 1 s se continua assistindo. Dê nota de 1 a 10 para cada item do checklist (justifique em uma linha olhando os quadros e as métricas), mais duas notas: 'história' (gancho, virada, final) e 'execução' (legibilidade, ritmo, acabamento). Corrija tudo abaixo de 8 e as flags antes de render_film.",
+        "Compare os quadros, o ritmo e a narração com o pedido e o checklist visual. As flags sinalizam pontos para inspecionar. Corrija o que prejudicar o resultado pedido antes de render_film.",
     };
   }
 

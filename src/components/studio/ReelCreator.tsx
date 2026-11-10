@@ -2,6 +2,7 @@ import type { BrandProof } from "../../../electron/core/brand-proofs";
 import { t, getStudioLanguage, type StudioLanguage } from "./studioLanguage";
 import { useEffect, useState } from "react";
 import { ArrowLeft, ArrowRight, LoaderCircle, WandSparkles } from "lucide-react";
+import { FORMATS } from "../../../electron/core/formats";
 import type { FilmAvatarRef } from "../../../electron/core/film";
 import type { StudioProfile } from "../../shared/profile";
 import { planSalesReel, reviseSalesScene, type SalesPlan, type SalesScene } from "./salesReels";
@@ -34,6 +35,7 @@ export interface ReelDraft {
   script: string;
   voice: { provider: StudioProfile["voice"]["provider"]; voiceId: string };
   formatId: string;
+  motionStyle?: string;
   effect: ReelEffect;
   avatar?: FilmAvatarRef;
 }
@@ -177,6 +179,7 @@ export function reelHtml(draft: ReelDraft, voice: VoiceResult, plan?: SalesPlan,
 <title>${htmlText(draft.objective)}</title>
 <style>
   @font-face { font-family: Anton; src: url(fonts/Anton-Regular.ttf); }
+  @font-face { font-family: Fredoka; src: url(fonts/Fredoka.ttf); font-weight: 300 700; }
   @font-face { font-family: "Instrument Sans"; src: url(fonts/InstrumentSans.ttf); font-weight: 100 900; }
   * { box-sizing: border-box; margin: 0; }
   html, body { width: 1080px; height: 1920px; overflow: hidden; background: #141318; }
@@ -247,12 +250,15 @@ export async function generateSalesReel(
       profileVoice = candidates.find((item) => item.id === profileVoice)?.id ?? candidates[0]?.id;
       if (!profileVoice) throw new Error(t("Escolha uma voz instalada para este idioma ou use ElevenLabs ou OpenAI."));
     }
-    const plan = revised ?? await planSalesReel(profile, brief ?? "", withAvatar, story, language);
+    const plan = revised ?? await planSalesReel(profile, brief ?? "", withAvatar, story, language, draft.motionStyle);
+    const formatId = draft.motionStyle ?? (withAvatar ? "avatar" : "ui-motion");
+    if (draft.motionStyle && plan.scenes.some((scene) => !scene.motion && !scene.proofId))
+      throw new Error(t("A IA não gerou os elementos visuais de todas as cenas. Tente gerar novamente."));
     const spoken = plan.scenes.map(({ narration }) => /[.!?]$/.test(narration) ? narration : narration + ".").join(" ");
     setProgress(t("Gerando a narração…"));
     const created = await api<CreatedFilm>("create_film", {
       name: plan.title,
-      format: withAvatar ? "avatar" : "ui-motion",
+      format: formatId,
       aspect: "9:16",
       ...(draft.avatar ? { avatar: draft.avatar } : {}),
     });
@@ -293,13 +299,13 @@ export async function generateSalesReel(
       path: "index.html",
       content: reelHtml({ ...draft, language, objective: plan.title }, voice, plan, assets),
     });
-    const [check, frames, format] = await Promise.all([
-      api<{ errors: string[]; warnings: string[] }>("film_check", { film: created.film }),
-      api<{ images: string[]; frameTimes: number[]; errors: string[] }>("film_stills", {
+    const check = await api<{ errors: string[]; warnings: string[] }>("film_check", { film: created.film });
+    const [frames, format] = await Promise.all([
+      check.errors.length ? { images: [], frameTimes: [], errors: [] } : api<{ images: string[]; frameTimes: number[]; errors: string[] }>("film_stills", {
         film: created.film,
         times: [0.5, duration * 0.35, duration * 0.7, Math.max(0.6, duration - 0.5)],
       }),
-      api<{ checklist: string[] }>("get_format_guide", { id: withAvatar ? "avatar" : "ui-motion" }),
+      api<{ checklist: string[] }>("get_format_guide", { id: formatId }),
     ]);
     const review: ReelReviewData = {
       images: frames.images,
@@ -310,7 +316,7 @@ export async function generateSalesReel(
       duration,
     };
     await api("profileLinkProject", { profileId: profile.id, projectId: created.film });
-    return { step: "review", draft: { ...draft, language, script: spoken }, filmId: created.film, review, caption: plan.caption, plan };
+    return { step: "review", draft: { ...draft, language, script: spoken, formatId }, filmId: created.film, review, caption: plan.caption, plan };
   } finally {
     generating = false;
   }
@@ -336,8 +342,13 @@ export function ReelCreator({
   const busy = session.step === "generating" || session.step === "exporting";
   const story = Boolean(draft.narrative);
   const brief = draft.brief ?? "";
-  const poster = story ? (withAvatar ? storyPoster : illustratedPoster) : (withAvatar ? avatarPoster : directPoster);
-  const clip = story ? (withAvatar ? storyClip : illustratedClip) : (withAvatar ? avatarClip : directClip);
+  const selectedStyle = FORMATS.find(({ id }) => id === draft.motionStyle);
+  const illustrated = selectedStyle?.id === "kurzgesagt";
+  const stylePreview = selectedStyle?.id === "ui-motion" ? [directPoster, directClip] :
+    selectedStyle?.id === "avatar" ? [avatarPoster, avatarClip] :
+    selectedStyle?.id === "historia" ? [storyPoster, storyClip] : undefined;
+  const poster = illustrated ? illustratedPoster : story ? (withAvatar ? storyPoster : illustratedPoster) : (withAvatar ? avatarPoster : directPoster);
+  const clip = illustrated ? illustratedClip : story ? (withAvatar ? storyClip : illustratedClip) : (withAvatar ? avatarClip : directClip);
   const [progress, setProgress] = useState("");
   const [sceneEdit, setSceneEdit] = useState<SalesPlan>();
   const editablePlan = sceneEdit ?? session.plan;
@@ -361,7 +372,7 @@ export function ReelCreator({
     if (!editablePlan || !adjustments[index]?.trim() || adjusting) return;
     setAdjusting(true);
     try {
-      const next = await reviseSalesScene(editablePlan.scenes[index], adjustments[index], draft.language ?? getStudioLanguage());
+      const next = await reviseSalesScene(editablePlan.scenes[index], adjustments[index], draft.language ?? getStudioLanguage(), draft.motionStyle);
       updateScene(index, next);
     } catch (reason) {
       onSession({ ...session, error: reason instanceof Error ? reason.message : String(reason) });
@@ -379,7 +390,7 @@ export function ReelCreator({
       if (!plan && session.variationBase) {
         setProgress("Testando outro gancho…");
         const [first, ...rest] = session.variationBase.scenes;
-        const adjusted = await reviseSalesScene(first, brief, draft.language ?? getStudioLanguage());
+        const adjusted = await reviseSalesScene(first, brief, draft.language ?? getStudioLanguage(), draft.motionStyle);
         plan = { ...session.variationBase, scenes: [{ ...adjusted, proofId: first.proofId }, ...rest] };
       }
       const next = await generateSalesReel(profile, {
@@ -414,6 +425,13 @@ export function ReelCreator({
             <button type="button" aria-pressed={!story} disabled={busy} onClick={() => update({ narrative: false })}>{t("Vídeo direto")}</button>
             <button type="button" aria-pressed={story} disabled={busy} onClick={() => update({ narrative: true })}>{t("História")}</button>
           </fieldset>
+          <label className="reel-field">{t("Estilo visual")}
+            <select value={draft.motionStyle ?? ""} disabled={busy || Boolean(session.variationBase)}
+              onChange={(event) => { setSceneEdit(undefined); update({ motionStyle: event.target.value || undefined }); }}>
+              <option value="">{t("Automático")}</option>
+              {FORMATS.map((format) => <option key={format.id} value={format.id}>{t(format.name)}</option>)}
+            </select>
+          </label>
           <label className="reel-field reel-language-field">{t("Idioma do Reel")}
             <select value={draft.language ?? getStudioLanguage()} disabled={busy} onChange={(event) => update({ language: event.target.value as StudioLanguage })}>
               <option value="pt-BR" lang="pt-BR">Português</option>
@@ -450,9 +468,11 @@ export function ReelCreator({
           </button>
         </section>
         <figure className="reel-style-preview">
-          <video key={clip} src={clip} poster={poster} controls muted loop playsInline preload="metadata" aria-label={t("Prévia do estilo selecionado")} />
-          <figcaption><strong>{story ? t("História") : t("Vídeo direto")} · {withAvatar ? t("Com avatar") : t("Sem avatar")}</strong>
-            <span>{t("Exemplo de linguagem visual. As cenas são compostas a partir do seu pedido.")}</span>
+          {(!selectedStyle || illustrated || stylePreview) && <video key={stylePreview?.[1] ?? clip}
+            src={stylePreview?.[1] ?? clip} poster={stylePreview?.[0] ?? poster} controls muted loop playsInline preload="metadata"
+            aria-label={t("Prévia do estilo selecionado")} />}
+          <figcaption><strong>{selectedStyle ? t(selectedStyle.name) : story ? t("História") : t("Vídeo direto")} · {withAvatar ? t("Com avatar") : t("Sem avatar")}</strong>
+            <span>{selectedStyle ? t(selectedStyle.goodFor) : t("Exemplo de linguagem visual. As cenas são compostas a partir do seu pedido.")}</span>
           </figcaption>
         </figure>
       </div>

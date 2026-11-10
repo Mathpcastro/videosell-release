@@ -118,7 +118,7 @@ export const STUDIO_TOOLS = [
   {
     name: "get_format_guide",
     description:
-      "Read the full production guide of a format: script rules, pacing, scene structure, the reusable scene kit (HTML/SVG snippets and tween patterns), audio recipe and the quality checklist. Follow it step by step; it replaces generic advice.",
+      "Read the production guide and checklist for a format. Some presets provide visual direction only: take the subject, script, scenes and ending from the user brief.",
     inputSchema: objectSchema({ id: string("Format id from list_formats.") }, ["id"]),
   },
   {
@@ -255,7 +255,7 @@ export const STUDIO_TOOLS = [
   {
     name: "film_review",
     description:
-      "Self-review the film before render_film: 7 key frames, measured metrics (first motion, longest still stretch, shot changes per 10 s, share of frames moving, narration words per minute and longest pause), flags for anything outside the ranges that hold attention, and the format checklist. Score every checklist row 1–10 as a viewer who did not make the film, plus 'história' and 'execução'; fix rows below 8 and every flag. Takes ~20–40 s.",
+      "Review 7 key frames, motion and narration metrics, inspection flags and the visual checklist before rendering. Compare them with the user brief. Keep deliberate choices such as a single shot or a long pause when they fit the request. Takes ~20–40 s.",
     inputSchema: objectSchema({ film: string("Film id.") }, ["film"]),
   },
   {

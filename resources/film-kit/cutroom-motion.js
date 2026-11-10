@@ -736,12 +736,12 @@
           root.appendChild(tt);
           CRM.popIn(tl, tt, t0, { rot: -4 }); CRM.out(tl, tt, next - 0.1);
         } else if (li === story.lines.length - 1) {
-          // End card: the scene dims behind the "continua" line and the follow CTA.
+          // Give the final narrator line an end card.
           var dim = document.createElement("div"); dim.style.cssText = "position:absolute;inset:0;z-index:24;background:rgba(14,12,24,.72);visibility:hidden;opacity:0";
           root.appendChild(dim); tl.to(dim, { autoAlpha: 1, duration: 0.35 }, t0);
-          var en = document.createElement("div"); en.className = "st-end"; en.textContent = l.text.replace(/\.$/, "") + "…";
+          var en = document.createElement("div"); en.className = "st-end"; en.textContent = l.text;
           root.appendChild(en); CRM.letters(tl, en, t0, { stagger: 0.03 });
-          CR.profileCTA(tl, t0 + 0.6, { x: 70, y: 1180, text: o.cta || "SEGUE PRA PARTE 2", color: accent, ink: "#FFFFFF", until: D });
+          if (o.cta) CR.profileCTA(tl, t0 + 0.6, { x: 70, y: 1180, text: o.cta, color: accent, ink: "#FFFFFF", until: D });
         } else {
           var nb = document.createElement("div"); nb.className = "st-nar"; nb.textContent = l.text; root.appendChild(nb);
           CRM.rise(tl, nb, t0, { times: l.words.map(function (w) { return Math.max(0, w.start - 0.05); }) });
@@ -801,6 +801,45 @@
    * app's "Reel com avatar" flow; agents can still direct scene by scene with the pieces above.
    *   CRM.autoReel({ tl, film: "#film", engine, avatar, duration, brand })
    */
+  function drawReelMotion(parent, layers, tl, start, end, last) {
+    var ns = "http://www.w3.org/2000/svg";
+    var svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 1080 1920");
+    svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;visibility:hidden;pointer-events:none";
+    layers.forEach(function (layer) {
+      var shape = layer.shape, node = document.createElementNS(ns, shape.kind);
+      var attributes = {
+        rect: ["x", "y", "width", "height"],
+        circle: ["cx", "cy", "r"],
+        path: ["d"],
+        text: ["x", "y"],
+      };
+      attributes[shape.kind].forEach(function (name) { node.setAttribute(name, shape[name]); });
+      node.setAttribute("fill", layer.fill);
+      if (layer.stroke) node.setAttribute("stroke", layer.stroke);
+      if (layer.strokeWidth != null) node.setAttribute("stroke-width", layer.strokeWidth);
+      if (shape.kind === "rect" && shape.radius != null) node.setAttribute("rx", shape.radius);
+      if (shape.kind === "text") {
+        node.setAttribute("font-size", shape.fontSize);
+        node.setAttribute("font-family", "Fredoka, Instrument Sans, sans-serif");
+        node.setAttribute("font-weight", "700");
+        node.textContent = shape.text;
+      }
+      svg.appendChild(node);
+      if (layer.move) {
+        var move = layer.move, length = end - start;
+        tl.to(node, {
+          x: move.x || 0, y: move.y || 0, scale: move.scale ?? 1,
+          rotation: move.rotate || 0, opacity: move.opacity ?? 1,
+          transformOrigin: "50% 50%", ease: "power2.inOut", duration: length * (move.end - move.start),
+        }, start + length * move.start);
+      }
+    });
+    parent.appendChild(svg);
+    tl.set(svg, { visibility: "visible" }, start);
+    if (!last) tl.set(svg, { visibility: "hidden" }, end);
+  }
+
   CRM.autoReel = function (o) {
     var tl = o.tl, root = document.querySelector(o.film || "#film"), D = o.duration;
     var brand = o.brand || {}, accent = brand.accent || "#7C5CFF", pop = brand.pop || "#C8FF5A";
@@ -819,6 +858,7 @@
     var bgC = document.createElement("canvas"); bgC.width = 1080; bgC.height = 1920;
     var avC = document.createElement("canvas"); avC.width = 1080; avC.height = 1920;
     cam.appendChild(bgC);
+    var artLayer = document.createElement("div"); cam.appendChild(artLayer);
     var textLayer = document.createElement("div"); cam.appendChild(textLayer);
     cam.appendChild(avC);
     root.appendChild(cam);
@@ -852,13 +892,14 @@
       planned.forEach(function (scene, index) {
         var start = index === 0 ? 0 : sentences[index] ? sentences[index][0].start : D * index / planned.length;
         var end = index === planned.length - 1 ? D : sentences[index + 1] ? sentences[index + 1][0].start : D * (index + 1) / planned.length;
+        if (scene.motion && end > start) drawReelMotion(artLayer, scene.motion, tl, start, end, index === planned.length - 1);
         if (end - start < 0.35) return;
         var panel = document.createElement("section");
         panel.style.cssText = "position:absolute;left:92px;right:92px;top:505px;visibility:hidden;color:white;font:700 48px Instrument Sans,sans-serif;line-height:1.12";
         var title = document.createElement("h2");
         title.style.cssText = "font:400 70px Anton,sans-serif;margin:0 0 36px;overflow-wrap:anywhere";
         title.textContent = scene.headline;
-        panel.appendChild(title);
+        if (scene.headline) panel.appendChild(title);
         var row = document.createElement("div");
         row.style.cssText = "display:flex;gap:24px";
         if (scene.visual === "steps" || scene.visual === "interface") row.style.flexDirection = "column";
@@ -888,10 +929,11 @@
             if (index + 1 < used.length) tl.set(image, { visibility: "hidden" }, start + (index + 1) / 8);
           });
           panel.appendChild(proof);
-        } else {
+        } else if (row.children.length) {
           panel.appendChild(row);
           tl.fromTo(row.children, { autoAlpha: 0, x: -36 }, { autoAlpha: 1, x: 0, duration: 0.22, stagger: 0.09 }, start + 0.12);
         }
+        if (!panel.children.length) return;
         visualLayer.appendChild(panel);
         tl.fromTo(panel, { autoAlpha: 0, y: 56 }, { autoAlpha: 1, y: 0, duration: 0.28 }, start);
         tl.to(panel, { autoAlpha: 0, duration: 0.16 }, end - 0.17);
@@ -946,6 +988,7 @@
       var chunks = [], per = Math.ceil(sw.length / Math.ceil(sw.length / 4));
       for (var c = 0; c < sw.length; c += per) chunks.push(sw.slice(c, c + per));
       if (last && A) chunks = [sw];
+      if (planned[si]?.captions === false) chunks = [];
       chunks.forEach(function (ch, ci) {
         var el = document.createElement("div");
         el.className = "ar-t";
@@ -969,7 +1012,6 @@
         else CRM.out(tl, el, t1, 0.1);
       });
       if (question || posv) LINES.push([start, start + 0.8]);
-      if (last) CR.profileCTA(tl, Math.max(start + 0.3, sw[sw.length - 1].start - 0.6), { x: 70, y: 720, color: accent, ink: "#FFFFFF", until: D });
     });
 
     CRM.progress(tl, root.querySelector(".ar-bar"), D);

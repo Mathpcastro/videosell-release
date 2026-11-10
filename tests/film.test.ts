@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { Films, envelopeFromSamples, filmStills, remoteReferences, runFilmWorker, slug, withCsp } from "../electron/core/film";
+import { FORMATS, formatGuide } from "../electron/core/formats";
 import { ffmpegPath } from "../electron/core/media";
 
 const exec = promisify(execFile);
@@ -46,6 +47,25 @@ describe("films", () => {
     expect(report.errors).toEqual([]);
     expect((await films.create({ name: "Curtida ou assinatura?" })).id).toBe("curtida-ou-assinatura-2");
     expect((await films.list()).map((f) => f.id).sort()).toEqual(["curtida-ou-assinatura", "curtida-ou-assinatura-2"]);
+  });
+
+  it.each(FORMATS.map(({ id }) => id))("opens %s as a base composition with visual guidance", async (format) => {
+    const guide = formatGuide(format);
+    const film = await films.create({
+      name: `Como uma encomenda chega em casa — ${format}`,
+      aspect: "16:9",
+      format: guide.id,
+      guide: guide.guide,
+    });
+    expect(film.files).not.toContain("roteiro.txt");
+    expect(film.files).toContain("kit/cutroom-motion.js");
+    const html = (await films.readFile(film.id, "index.html")).content;
+    expect(html).toContain('data-width="1920" data-height="1080"');
+    const rules = (await films.readFile(film.id, "CUTROOM.md")).content;
+    expect(rules).toContain("O pedido define assunto");
+    expect(rules).not.toContain("Funil orgânico");
+    expect(rules).not.toContain("## Estrutura");
+    expect((await films.check(film.id)).errors).toEqual([]);
   });
 
   it("keeps writes inside the film folder and to text files", async () => {
@@ -157,6 +177,38 @@ console.log(JSON.stringify({ complete: true, received, requestPath }));
       now.mockRestore();
     }
   }, 15_000);
+});
+
+describe("motion kit and avatar engine in films", () => {
+  it("ships the motion kit, a classic-script avatar engine and a sample avatar", async () => {
+    const film = await films.create({ name: "Avatar apresentador", format: "avatar" });
+    expect(film.files).toEqual(expect.arrayContaining(["kit/cutroom-motion.js", "kit/avatar/engine.js", "kit/avatar/sample.js"]));
+    const engine = await fs.readFile(path.join(film.path, "kit", "avatar", "engine.js"), "utf8");
+    expect(engine).not.toMatch(/^export\s/m);
+    // The classic build runs as a plain script and draws the sample avatar.
+    const sample = await fs.readFile(path.join(film.path, "kit", "avatar", "sample.js"), "utf8");
+    const scope: Record<string, any> = {};
+    new Function("window", "ImageData", `${sample}
+${engine}`)(scope, class {});
+    const pixels = scope.AvatarEngine.renderAvatarPixels(scope.CRM_SAMPLE_AVATAR, { pose: "pointing", expression: "happy", mouth: "D", blink: 0, frame: 3 }, "full");
+    expect(pixels.width).toBe(scope.CRM_SAMPLE_AVATAR.canvas.full);
+    expect(pixels.data.some((v: number) => v > 0)).toBe(true);
+  });
+});
+
+describe("effects catalogue (HyperFrames registry, offline)", () => {
+  it("finds effects and copies one into a film with a mount snippet", async () => {
+    const found = await films.effects("caption karaoke");
+    expect(found.effects.map((e) => e.name)).toContain("caption-pill-karaoke");
+    const film = await films.create({ name: "Efeitos", format: "avatar" });
+    const added = await films.addEffect(film.id, "per-word-rise");
+    expect(added.file).toBe("compositions/components/per-word-rise.html");
+    expect(added.mount).toContain('data-composition-src="compositions/components/per-word-rise.html"');
+    const html = await fs.readFile(path.join(film.path, added.file), "utf8");
+    expect(html).toContain("../../kit/gsap.min.js");
+    expect(html).not.toMatch(/https:\/\/(cdn\.jsdelivr|fonts\.googleapis)/);
+    await expect(films.addEffect(film.id, "nao-existe")).rejects.toThrow(/não existe/);
+  });
 });
 
 describe("film helpers", () => {

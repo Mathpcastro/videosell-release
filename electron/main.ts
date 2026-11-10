@@ -1866,7 +1866,6 @@ app.whenReady().then(async () => {
         join(app.getPath("videos"), "CutRoom", "filmes"),
         join(resources, "film-kit"),
         createRequire(import.meta.url).resolve("gsap/dist/gsap.min.js"),
-        join(resources, "film-recipes"),
       ),
       avatarStore,
       avatarEngineDir: join(resources, "avatar-engine"),
