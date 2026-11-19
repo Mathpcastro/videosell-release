@@ -246,42 +246,52 @@ describe("contrato da página pública de upsell Videosell", () => {
     );
   });
 
-  const viralOriginals = [
-    "https://x.com/finnardley/status/2114305886420086817",
-    "https://x.com/twoclipping/status/2103835273813496100",
-  ];
-
-  it("compara dois virais originais com a versão do Videosell e mostra o tour real", async () => {
-    const pairs = Array.from(document.querySelectorAll("#comparativo .pair"));
-    expect(pairs).toHaveLength(2);
-    for (const pair of pairs) {
-      expect(pair.querySelector(".viral a.orig")).not.toBeNull();
-      expect(pair.querySelector(".ours video[src^='videos/']")).not.toBeNull();
+  it("vende o canal dark feito pela IA que a pessoa já assina, nas três redes", () => {
+    for (const word of ["canal", "ChatGPT", "Claude", "YouTube", "TikTok", "Instagram", "Shorts"]) {
+      expect(visibleText).toContain(word);
     }
-    expect(document.querySelector("#produto-por-dentro")).not.toBeNull();
-    const screens = Array.from(document.querySelectorAll("img[data-studio-screen]"));
-    expect(screens.length).toBeGreaterThanOrEqual(4);
-    await Promise.all(
-      screens.map((image) =>
-        access(localMediaPath(image.getAttribute("src")!)!),
-      ),
-    );
+    expect(document.querySelector("#como-funciona .flow")?.querySelectorAll("li").length).toBe(3);
   });
 
-  it("aponta cada comparativo para o post original no X", () => {
-    const originalHrefs = Array.from(
-      document.querySelectorAll("a.orig"),
-      (anchor) => anchor.getAttribute("href"),
-    );
-    expect(originalHrefs).toEqual(viralOriginals);
+  it("mostra um episódio real: trecho 16:9, Short, folha de quadros, 3 thumbs e o pacote com FONTES", async () => {
+    const episode = document.querySelector("#episodio")!;
+    expect(document.querySelector("#inicio video[src='videos/canal-episodio.mp4'][data-autoplay]")).not.toBeNull();
+    expect(document.querySelector("#inicio video[src='videos/canal-short.mp4'][data-autoplay]")).not.toBeNull();
+    expect(episode.querySelector("img[src='videos/canal-folha.jpg']")).not.toBeNull();
+    expect(episode.querySelectorAll(".thumbs img")).toHaveLength(3);
+    const pkg = episode.querySelector(".pkg")?.textContent ?? "";
+    for (const part of ["CAPÍTULOS", "FONTES", "FOTOS", "MÚSICA"]) expect(pkg).toContain(part);
+    expect(episode.querySelector(".fact a[href^='https://']")).not.toBeNull();
   });
 
-  it("cita fonte para cada exemplo real de vídeo que vende", () => {
-    const proofs = Array.from(document.querySelectorAll("#por-que .proof"));
-    expect(proofs.length).toBeGreaterThanOrEqual(3);
-    for (const proof of proofs) {
-      expect(proof.querySelector("a.src")?.getAttribute("href")).toMatch(/^https:\/\//);
+  it("vende uma oferta e reserva os cinco bônus para o bloco de compra", () => {
+    expect(document.querySelector("[data-path], [data-path-btn], [data-only], #modulos")).toBeNull();
+    const offer = document.querySelector("#oferta")!;
+    expect(offer.querySelectorAll(".stack li")).toHaveLength(5);
+    expect(offer.querySelector('video[src="videos/avatar.mp4"]')).not.toBeNull();
+    expect(offer.querySelector('video[src="videos/ui-motion.mp4"]')).not.toBeNull();
+    expect(offer.querySelector(".price s")?.textContent).toBe("R$ 147");
+    expect(document.querySelector("#inicio h1")?.textContent).toContain("canal dark");
+  });
+
+  it("leva aos vídeos originais dos casos de mercado e distingue o piloto do produto", () => {
+    const links = Array.from(document.querySelectorAll("#casos .case-grid a"));
+    expect(links).toHaveLength(3);
+    for (const item of links) {
+      expect(item.textContent).toContain("vídeo");
+      expect(item.getAttribute("href")).toMatch(/^https:\/\/x\.com\/\w+\/status\/\d+$/);
     }
+    expect(document.querySelector("#inicio .caption")?.textContent).toContain("piloto de Niterói");
+  });
+
+  it("traz as medições do teste e a conexão pelo MCP", () => {
+    expect(document.querySelectorAll("#medicoes li").length).toBeGreaterThanOrEqual(3);
+    expect(document.querySelector("#conectar img[src='videos/canal-mcp.png']")).not.toBeNull();
+  });
+
+  it("promessa forte sem prometer o que o app não faz", () => {
+    expect(visibleText).toContain("programa de parcerias do YouTube");
+    expect(visibleText).not.toMatch(/monetiza\w* garantid|publica\w* (sozinho|direto) no (YouTube|TikTok)/i);
   });
 
   it("abre cada link externo em nova aba com proteção", () => {
